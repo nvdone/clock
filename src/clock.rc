@@ -1,0 +1,59 @@
+//NVD Clock
+//Copyright (C) 2024, Nikolay Dudkin
+
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+//
+//The above copyright notice and this permission notice shall be included in all
+//copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//SOFTWARE.
+
+#include "windows.h"
+
+1 ICON DISCARDABLE "clock.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x28L
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041904b0"
+        BEGIN
+            VALUE "Comments", "NVD Clock\0"
+            VALUE "CompanyName", "Nikolay Dudkin\0"
+            VALUE "FileDescription", "NVD Clock, F1 - help\0"
+            VALUE "FileVersion", "100\0"
+            VALUE "InternalName", "NVD Clock\0"
+            VALUE "LegalCopyright", "Copyright © 2024, Nikolay Dudkin\0"
+            VALUE "LegalTrademarks", "\0"
+            VALUE "OriginalFilename", "clock.exe\0"
+            VALUE "PrivateBuild", "100\0"
+            VALUE "ProductName", "NVD Clock\0"
+            VALUE "ProductVersion", "1.00\0"
+            VALUE "SpecialBuild", "100\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x419, 1200
+    END
+END
+
+
