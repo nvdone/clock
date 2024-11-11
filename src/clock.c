@@ -48,7 +48,7 @@ struct
 	int passedMS;
 } timerData;
 
-void UpdateTimerData(int timerState)
+static void UpdateTimerData(int timerState)
 {
 	ULONGLONG ticks = GetTickCount64();
 	timerData.timerState = timerState;
@@ -74,7 +74,7 @@ void UpdateTimerData(int timerState)
 	}
 }
 
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	static int topmost = 0;
 	static SYSTEMTIME pTime;
@@ -153,6 +153,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		case WM_RBUTTONDOWN:
 		case WM_NCRBUTTONDOWN:
+		case WM_RBUTTONDBLCLK:
+		case WM_NCRBUTTONDBLCLK:
 			switch(timerData.timerState)
 			{
 				case 0: // Ready
@@ -235,7 +237,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-int WindowShow(HINSTANCE hInstance)
+static int WindowShow(HINSTANCE hInstance)
 {
 	wchar_t *windowName = L"NVD clock";
 	wchar_t *className = L"NVD clock class";
@@ -245,6 +247,7 @@ int WindowShow(HINSTANCE hInstance)
 	MSG msg;
 	LOGFONT lf;
 
+	memset(&rect, 0, sizeof(RECT));
 	memset(&windowRect, 0, sizeof(RECT));
 	windowRect.right = 170;
 	windowRect.bottom = 65;
@@ -327,7 +330,11 @@ int WindowShow(HINSTANCE hInstance)
 	return 0;
 }
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR cmdLine, int cmdShow)
+#ifdef __WATCOMC__
+	int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nShowCmd)
+#else
+	int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nShowCmd)
+#endif
 {
 	return WindowShow(hInstance);
 }
