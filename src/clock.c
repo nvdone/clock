@@ -230,6 +230,52 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 				hit = HTCAPTION;
 		return hit;
 
+		case WM_USER + 1:
+			switch (lParam)
+			{
+			case WM_RBUTTONDOWN:
+				switch(timerData.timerState)
+				{
+					case 0: // Ready
+						UpdateTimerData(1);
+						KillTimer(hWnd, 1);
+						SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
+					break;
+
+					case 1: //Running
+						UpdateTimerData(2);
+						KillTimer(hWnd, 1);
+						SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
+					break;
+
+					default: //Stopped
+						UpdateTimerData(0);
+					break;
+				}
+				SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+				if(!topmost)
+					SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+				RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+				break;
+
+			case WM_LBUTTONDOWN:
+				SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+				if(GetKeyState(VK_CONTROL) & 0x8000)
+					topmost =~ topmost;
+				if(!topmost)
+					SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+				RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+				break;
+
+			case WM_LBUTTONDBLCLK:
+				DestroyWindow(hWnd);
+				break;
+
+			default:
+				break;
+			}
+			break;
+
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
 	}
@@ -246,6 +292,8 @@ static int WindowShow(HINSTANCE hInstance)
 	HWND hWindow;
 	MSG msg;
 	LOGFONT lf;
+	HICON hMainIcon;
+	NOTIFYICONDATA notifyIconData;
 
 	memset(&rect, 0, sizeof(RECT));
 	memset(&windowRect, 0, sizeof(RECT));
@@ -299,6 +347,17 @@ static int WindowShow(HINSTANCE hInstance)
 	hBrush = CreateSolidBrush(RGB(38, 37, 36));
 	if(!hBrush)
 	{
+		DeleteObject(hFontSmall);
+		DeleteObject(hFontBig);
+		UnregisterClass(className, hInstance);
+		return 1;
+	}
+
+	hMainIcon = LoadIcon(hInstance, MAKEINTRESOURCE(1));
+	if (!hMainIcon)
+	{
+		DeleteObject(hBrush);
+		DeleteObject(hFontSmall);
 		DeleteObject(hFontBig);
 		UnregisterClass(className, hInstance);
 		return 1;
@@ -309,7 +368,31 @@ static int WindowShow(HINSTANCE hInstance)
 	if(!hWindow)
 	{
 		DeleteObject(hBrush);
+		DeleteObject(hFontSmall);
 		DeleteObject(hFontBig);
+		UnregisterClass(className, hInstance);
+		return 1;
+	}
+
+	notifyIconData.cbSize			= sizeof(NOTIFYICONDATA);
+	notifyIconData.hWnd				= hWindow;
+	notifyIconData.uID				= 1;
+	notifyIconData.uFlags			= NIF_ICON | NIF_MESSAGE | NIF_TIP;
+	notifyIconData.uCallbackMessage	= WM_USER + 1;
+	notifyIconData.hIcon			= hMainIcon;
+
+	#ifndef __WATCOMC__
+	wcsncpy_s(notifyIconData.szTip, 64, windowName, 64);
+	#else
+	wcsncpy(notifyIconData.szTip, windowName, 64);
+	#endif
+
+	if (!Shell_NotifyIcon(NIM_ADD, &notifyIconData))
+	{
+		DestroyIcon(hMainIcon);
+		DeleteObject(hFontSmall);
+		DeleteObject(hFontBig);
+		DeleteObject(hBrush);
 		UnregisterClass(className, hInstance);
 		return 1;
 	}
@@ -322,10 +405,13 @@ static int WindowShow(HINSTANCE hInstance)
 		DispatchMessage(&msg);
 	}
 
-	UnregisterClass(className, hInstance);
+	Shell_NotifyIcon(NIM_DELETE, &notifyIconData);
+
+	DestroyIcon(hMainIcon);
 	DeleteObject(hFontSmall);
 	DeleteObject(hFontBig);
 	DeleteObject(hBrush);
+	UnregisterClass(className, hInstance);
 
 	return 0;
 }
