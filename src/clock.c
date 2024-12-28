@@ -189,7 +189,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 				break;
 
 				case VK_F1:
-					MessageBox(NULL, L"NVD Clock\r\n(C) 2024, Nikolay Dudkin\r\n\r\nESC - close\r\nF1 - help\r\nF2 - toggle topmost\r\nF3 - timer\r\nLeft doubleclick - close\r\nControl + left click - toggle topmost\r\nRight click - timer", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
+					MessageBox(NULL, L"NVD Clock\r\n(C) 2024, Nikolay Dudkin\r\n\r\nESC - close\r\nF1 - help\r\nF2 - toggle topmost\r\nF3 - stopwatch\r\nLeft doubleclick - close\r\nControl + left click - toggle topmost\r\nRight click - stopwatch", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
 				break;
 
 				case VK_F2:
