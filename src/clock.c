@@ -76,6 +76,7 @@ static void UpdateTimerData(int timerState)
 
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	static int hidden = 0;
 	static int topmost = 0;
 	static SYSTEMTIME pTime;
 
@@ -238,13 +239,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 				{
 					case 0: // Ready
 						UpdateTimerData(1);
-						KillTimer(hWnd, 1);
+						if(!hidden)
+							KillTimer(hWnd, 1);
 						SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
 					break;
 
 					case 1: //Running
 						UpdateTimerData(2);
-						KillTimer(hWnd, 1);
+						if(!hidden)
+							KillTimer(hWnd, 1);
 						SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
 					break;
 
@@ -252,19 +255,41 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 						UpdateTimerData(0);
 					break;
 				}
+				ShowWindow(hWnd, SW_SHOWNORMAL);
 				SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 				if(!topmost)
 					SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 				RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+				hidden = 0;
 				break;
 
 			case WM_LBUTTONDOWN:
-				SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-				if(GetKeyState(VK_CONTROL) & 0x8000)
-					topmost =~ topmost;
-				if(!topmost)
-					SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-				RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+				if(!hidden)
+				{
+					KillTimer(hWnd, 1);
+					ShowWindow(hWnd, SW_HIDE);
+				}
+				else
+				{
+					switch(timerData.timerState)
+					{
+						case 1: //Running
+							SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
+						break;
+
+						default: //Stopped
+							SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
+						break;
+					}
+					ShowWindow(hWnd, SW_SHOWNORMAL);
+					SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+					if(GetKeyState(VK_CONTROL) & 0x8000)
+						topmost =~ topmost;
+					if(!topmost)
+						SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+					RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+				}
+				hidden = ~hidden;
 				break;
 
 			case WM_LBUTTONDBLCLK:
