@@ -171,7 +171,7 @@ void ShowHideWindow(HWND hWnd)
 
 void ShowHelp()
 {
-	MessageBox(NULL, L"NVD Clock\r\n(C) 2024-2025, Nikolay Dudkin\r\n\r\nControls:\r\nESC or control + left doubleclick - close\r\nF1 - help\r\nF2 or right click - stopwatch\r\nF3 or control + right click - toggle topmost\r\nF4 or left doubleclick - hide\r\n\r\nCommand line arguments:\r\nautostart=normal - auto start at boot\r\nautostart=hidden - auto start at boot, hidden\r\nautostart=disable - disable auto start at boot\r\nhidden - start hidden", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
+	MessageBox(NULL, L"NVD Clock\r\n(C) 2024-2025, Nikolay Dudkin\r\n\r\nControls:\r\nWIN + ESC or control + left doubleclick - close\r\nESC or left doubleclick - hide\r\nF1 - help\r\nF2 or right click - stopwatch\r\nF3 or control + right click - toggle topmost\r\n\r\nCommand line arguments:\r\nautostart=normal - auto start at boot\r\nautostart=hidden - auto start at boot, hidden\r\nautostart=disable - disable auto start at boot\r\nhidden - start hidden", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
 }
 
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -243,7 +243,13 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 			switch(wParam)
 			{
 				case VK_ESCAPE:
-					DestroyWindow(hWnd);
+					if(GetKeyState(VK_LWIN) & 0x8000)
+						DestroyWindow(hWnd);
+					else
+					{
+						hidden = ~0;
+						ShowHideWindow(hWnd);
+					}
 				break;
 
 				case VK_F1:
@@ -257,11 +263,6 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 
 				case VK_F3:
 					topmost =~ topmost;
-					ShowHideWindow(hWnd);
-				break;
-
-				case VK_F4:
-					hidden = ~0;
 					ShowHideWindow(hWnd);
 				break;
 
