@@ -1,5 +1,5 @@
 //NVD Clock
-//Copyright (C) 2024, Nikolay Dudkin
+//Copyright (C) 2024-2025, Nikolay Dudkin
 
 //Permission is hereby granted, free of charge, to any person obtaining a copy
 //of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,8 @@ RECT windowRect;
 HFONT hFontBig;
 HFONT hFontSmall;
 HBRUSH hBrush;
+int hidden = 0;
+int topmost = 0;
 
 struct
 {
@@ -47,6 +49,59 @@ struct
 	int passedS;
 	int passedMS;
 } timerData;
+
+int RegisterStartup(HKEY baseKey, wchar_t *name, wchar_t *args)
+{
+	HKEY key;
+	wchar_t *path = (wchar_t *) malloc((MAX_PATH + wcslen(args) + 1) * sizeof(wchar_t));
+
+	if (path == NULL)
+		return 1;
+
+	memset(path, 0, (MAX_PATH + wcslen(args) + 1) * sizeof(wchar_t));
+
+	if(!GetModuleFileName(NULL, path, MAX_PATH))
+	{
+		free(path);
+		return 2;
+	}
+
+	wcsncat_s(path, MAX_PATH + wcslen(args), args, wcslen(args));
+
+	if(RegOpenKeyEx(baseKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ | KEY_WRITE, &key) != ERROR_SUCCESS)
+	{
+		free(path);
+		return 3;
+	}
+
+	if(RegSetValueEx(key, name, 0, REG_SZ, (BYTE *)path, (DWORD)(wcslen(path) + 1) * sizeof(wchar_t)) != ERROR_SUCCESS)
+	{
+		RegCloseKey(key);
+		free(path);
+		return 4;
+	}
+
+	RegCloseKey(key);
+	free(path);
+	return 0;
+}
+
+int UnregisterStartup(HKEY baseKey, wchar_t *name)
+{
+	HKEY key;
+
+	if(RegOpenKeyEx(baseKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ | KEY_WRITE, &key) != ERROR_SUCCESS)
+		return 1;
+
+	if(RegDeleteValue(key, name) != ERROR_SUCCESS)
+	{
+		RegCloseKey(key);
+		return 2;
+	}
+
+	RegCloseKey(key);
+	return 0;
+}
 
 static void UpdateTimerData(int timerState)
 {
@@ -74,10 +129,53 @@ static void UpdateTimerData(int timerState)
 	}
 }
 
+void SwitchTimerState(HWND hWnd)
+{
+	switch(timerData.timerState)
+	{
+		case 0: // Ready
+			UpdateTimerData(1);
+			KillTimer(hWnd, 1);
+			SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
+		break;
+
+		case 1: //Running
+			UpdateTimerData(2);
+			KillTimer(hWnd, 1);
+			SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
+		break;
+
+		default: //Stopped
+			UpdateTimerData(0);
+		break;
+	}
+}
+
+void ShowHideWindow(HWND hWnd)
+{
+	if(hidden)
+	{
+		KillTimer(hWnd, 1);
+		ShowWindow(hWnd, SW_HIDE);
+	}
+	else
+	{
+		SetTimer(hWnd, 1, timerData.timerState == 1 ? TIMER_FAST : TIMER_DEFAULT, (TIMERPROC) NULL);
+		ShowWindow(hWnd, SW_SHOWNORMAL);
+		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		if(!topmost)
+			SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+	}
+}
+
+void ShowHelp()
+{
+	MessageBox(NULL, L"NVD Clock\r\n(C) 2024-2025, Nikolay Dudkin\r\n\r\nControls:\r\nESC or control + left doubleclick - close\r\nF1 - help\r\nF2 or right click - stopwatch\r\nF3 or control + right click - toggle topmost\r\nF4 or left doubleclick - hide\r\n\r\nCommand line arguments:\r\nautostart=normal - auto start at boot\r\nautostart=hidden - auto start at boot, hidden\r\nautostart=disable - disable auto start at boot\r\nhidden - start hidden", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
+}
+
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	static int hidden = 0;
-	static int topmost = 0;
 	static SYSTEMTIME pTime;
 
 	SYSTEMTIME cTime;
@@ -90,8 +188,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 	switch(message)
 	{
 		case WM_CREATE:
-			UpdateTimerData(0);
 			SetLayeredWindowAttributes(hWnd, 0, 216, LWA_ALPHA);
+			UpdateTimerData(0);
 			SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
 		break;
 		
@@ -141,47 +239,6 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 			EndPaint(hWnd, &ps);
 		break;
 
-		case WM_LBUTTONDOWN:
-		case WM_NCLBUTTONDOWN:
-			if(GetKeyState(VK_CONTROL) & 0x8000)
-			{
-				SetWindowPos(hWnd, (topmost =~ topmost) ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-				RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
-				break;
-			}
-			return DefWindowProc(hWnd, message, wParam, lParam);
-		break;
-
-		case WM_RBUTTONDOWN:
-		case WM_NCRBUTTONDOWN:
-		case WM_RBUTTONDBLCLK:
-		case WM_NCRBUTTONDBLCLK:
-			switch(timerData.timerState)
-			{
-				case 0: // Ready
-					UpdateTimerData(1);
-					KillTimer(hWnd, 1);
-					SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
-				break;
-
-				case 1: //Running
-					UpdateTimerData(2);
-					KillTimer(hWnd, 1);
-					SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
-				break;
-
-				default: //Stopped
-					UpdateTimerData(0);
-				break;
-			}
-			RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
-		break;
-
-		case WM_LBUTTONDBLCLK:
-		case WM_NCLBUTTONDBLCLK:
-			DestroyWindow(hWnd);
-		break;
-
 		case WM_KEYUP:
 			switch(wParam)
 			{
@@ -190,114 +247,82 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 				break;
 
 				case VK_F1:
-					MessageBox(NULL, L"NVD Clock\r\n(C) 2024, Nikolay Dudkin\r\n\r\nESC - close\r\nF1 - help\r\nF2 - toggle topmost\r\nF3 - stopwatch\r\nLeft doubleclick - close\r\nControl + left click - toggle topmost\r\nRight click - stopwatch", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
+					ShowHelp();
 				break;
 
 				case VK_F2:
-					SetWindowPos(hWnd, (topmost =~ topmost) ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+					SwitchTimerState(hWnd);
 					RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
 				break;
 
 				case VK_F3:
-					switch(timerData.timerState)
-					{
-						case 0: // Ready
-							UpdateTimerData(1);
-							KillTimer(hWnd, 1);
-							SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
-						break;
+					topmost =~ topmost;
+					ShowHideWindow(hWnd);
+				break;
 
-						case 1: //Running
-							UpdateTimerData(2);
-							KillTimer(hWnd, 1);
-							SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
-						break;
-
-						default: //Stopped
-							UpdateTimerData(0);
-						break;
-					}
-					RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+				case VK_F4:
+					hidden = ~0;
+					ShowHideWindow(hWnd);
 				break;
 
 				default:
 				break;
 			}
 		break;
-		
+
 		case WM_NCHITTEST:
 			hit = DefWindowProc(hWnd, message, wParam, lParam);
 			if (hit == HTCLIENT)
 				hit = HTCAPTION;
 		return hit;
 
+		case WM_LBUTTONDBLCLK:
+		case WM_NCLBUTTONDBLCLK:
+			if(GetKeyState(VK_CONTROL) & 0x8000)
+				DestroyWindow(hWnd);
+			else
+			{
+				hidden = ~hidden;
+				ShowHideWindow(hWnd);
+			}
+		break;
+
+		case WM_RBUTTONDOWN:
+		case WM_NCRBUTTONDOWN:
+		case WM_RBUTTONDBLCLK:
+		case WM_NCRBUTTONDBLCLK:
+			if(GetKeyState(VK_CONTROL) & 0x8000)
+				topmost =~ topmost;
+			else
+				SwitchTimerState(hWnd);
+			ShowHideWindow(hWnd);
+			RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+		break;
+
 		case WM_USER + 1:
 			switch (lParam)
 			{
-			case WM_RBUTTONDOWN:
-				switch(timerData.timerState)
-				{
-					case 0: // Ready
-						UpdateTimerData(1);
-						if(!hidden)
-							KillTimer(hWnd, 1);
-						SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
-					break;
-
-					case 1: //Running
-						UpdateTimerData(2);
-						if(!hidden)
-							KillTimer(hWnd, 1);
-						SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
-					break;
-
-					default: //Stopped
-						UpdateTimerData(0);
-					break;
-				}
-				ShowWindow(hWnd, SW_SHOWNORMAL);
-				SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-				if(!topmost)
-					SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-				RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
-				hidden = 0;
+				case WM_LBUTTONDOWN:
+					hidden = ~hidden;
+					ShowHideWindow(hWnd);
 				break;
 
-			case WM_LBUTTONDOWN:
-				if(!hidden)
-				{
-					KillTimer(hWnd, 1);
-					ShowWindow(hWnd, SW_HIDE);
-				}
-				else
-				{
-					switch(timerData.timerState)
-					{
-						case 1: //Running
-							SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
-						break;
-
-						default: //Stopped
-							SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
-						break;
-					}
-					ShowWindow(hWnd, SW_SHOWNORMAL);
-					SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+				case WM_RBUTTONDOWN:
+					hidden = 0;
 					if(GetKeyState(VK_CONTROL) & 0x8000)
-						topmost =~ topmost;
-					if(!topmost)
-						SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-					RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
-				}
-				hidden = ~hidden;
-				break;
+						topmost = ~topmost;
+					else
+						SwitchTimerState(hWnd);
+					ShowHideWindow(hWnd);
+					break;
 
-			case WM_LBUTTONDBLCLK:
-				DestroyWindow(hWnd);
-				break;
+				case WM_LBUTTONDBLCLK:
+					if(GetKeyState(VK_CONTROL) & 0x8000)
+						DestroyWindow(hWnd);
+					break;
 
-			default:
-				break;
+				default:
+					break;
 			}
 			break;
 
@@ -422,7 +447,7 @@ static int WindowShow(HINSTANCE hInstance)
 		return 1;
 	}
 
-	ShowWindow(hWindow, SW_SHOW);
+	ShowWindow(hWindow, hidden ? SW_HIDE : SW_SHOW);
 
 	while(GetMessage(&msg, NULL, 0, 0))
 	{
@@ -447,5 +472,34 @@ static int WindowShow(HINSTANCE hInstance)
 	int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nShowCmd)
 #endif
 {
+	if(!wcscmp(lpCmdLine, L"?") || !wcscmp(lpCmdLine, L"-?") || !wcscmp(lpCmdLine, L"/?") || !wcscmp(lpCmdLine, L"help") || !wcscmp(lpCmdLine, L"-help") || !wcscmp(lpCmdLine, L"/help") || !wcscmp(lpCmdLine, L"--help"))
+	{
+		ShowHelp();
+		return 0;
+	}
+
+	if(!wcscmp(lpCmdLine, L"autostart=normal"))
+	{
+		if(!RegisterStartup(HKEY_CURRENT_USER, L"NVDClock", L""))
+			MessageBox(NULL, L"Normal auto start enabled", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
+		return 0;
+	}
+
+	if(!wcscmp(lpCmdLine, L"autostart=hidden"))
+	{
+		if(!RegisterStartup(HKEY_CURRENT_USER, L"NVDClock", L" hidden"))
+			MessageBox(NULL, L"Hidden auto start enabled", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
+		return 0;
+	}
+
+	if(!wcscmp(lpCmdLine, L"autostart=disabled"))
+	{
+		if(!UnregisterStartup(HKEY_CURRENT_USER, L"NVDClock"))
+			MessageBox(NULL, L"Auto start disabled", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
+		return 0;
+	}
+
+	if(!wcscmp(lpCmdLine, L"hidden"))
+		hidden = ~0;
 	return WindowShow(hInstance);
 }

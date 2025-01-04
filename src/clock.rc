@@ -38,10 +38,10 @@ BEGIN
         BEGIN
             VALUE "Comments", "NVD Clock\0"
             VALUE "CompanyName", "Nikolay Dudkin\0"
-            VALUE "FileDescription", "NVD Clock, F1 - help\0"
+            VALUE "FileDescription", "NVD Clock\0"
             VALUE "FileVersion", "100\0"
             VALUE "InternalName", "NVD Clock\0"
-            VALUE "LegalCopyright", "Copyright © 2024, Nikolay Dudkin\0"
+            VALUE "LegalCopyright", "Copyright © 2024-2025, Nikolay Dudkin\0"
             VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "clock.exe\0"
             VALUE "PrivateBuild", "100\0"
