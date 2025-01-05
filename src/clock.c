@@ -32,13 +32,18 @@
 #define BUFSIZE 256
 #define TIMER_DEFAULT 250
 #define TIMER_FAST 100
+#define WM_CLOCKNOTIFYICONMESSAGE (WM_USER + 1)
 
-RECT windowRect;
-HFONT hFontBig;
-HFONT hFontSmall;
-HBRUSH hBrush;
-int hidden = 0;
-int topmost = 0;
+struct
+{
+	HWND hWnd;
+	RECT windowRect;
+	HFONT hFontBig;
+	HFONT hFontSmall;
+	HBRUSH hBrush;
+	int topmost;
+	int hidden;
+} windowData;
 
 struct
 {
@@ -50,65 +55,12 @@ struct
 	int passedMS;
 } timerData;
 
-int RegisterStartup(HKEY baseKey, wchar_t *name, wchar_t *args)
-{
-	HKEY key;
-	wchar_t *path = (wchar_t *) malloc((MAX_PATH + wcslen(args) + 1) * sizeof(wchar_t));
-
-	if (path == NULL)
-		return 1;
-
-	memset(path, 0, (MAX_PATH + wcslen(args) + 1) * sizeof(wchar_t));
-
-	if(!GetModuleFileName(NULL, path, MAX_PATH))
-	{
-		free(path);
-		return 2;
-	}
-
-	wcsncat_s(path, MAX_PATH + wcslen(args), args, wcslen(args));
-
-	if(RegOpenKeyEx(baseKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ | KEY_WRITE, &key) != ERROR_SUCCESS)
-	{
-		free(path);
-		return 3;
-	}
-
-	if(RegSetValueEx(key, name, 0, REG_SZ, (BYTE *)path, (DWORD)(wcslen(path) + 1) * sizeof(wchar_t)) != ERROR_SUCCESS)
-	{
-		RegCloseKey(key);
-		free(path);
-		return 4;
-	}
-
-	RegCloseKey(key);
-	free(path);
-	return 0;
-}
-
-int UnregisterStartup(HKEY baseKey, wchar_t *name)
-{
-	HKEY key;
-
-	if(RegOpenKeyEx(baseKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ | KEY_WRITE, &key) != ERROR_SUCCESS)
-		return 1;
-
-	if(RegDeleteValue(key, name) != ERROR_SUCCESS)
-	{
-		RegCloseKey(key);
-		return 2;
-	}
-
-	RegCloseKey(key);
-	return 0;
-}
-
-static void UpdateTimerData(int timerState)
+static void UpdateTimerData(int newTimerState)
 {
 	ULONGLONG ticks = GetTickCount64();
-	timerData.timerState = timerState;
+	timerData.timerState = newTimerState;
 
-	switch (timerState)
+	switch (timerData.timerState)
 	{
 		case 0: //Ready
 			timerData.tStart = 0;
@@ -129,47 +81,101 @@ static void UpdateTimerData(int timerState)
 	}
 }
 
-void SwitchTimerState(HWND hWnd)
+static void SwitchTimerState()
 {
-	switch(timerData.timerState)
+	switch (timerData.timerState)
 	{
-		case 0: // Ready
-			UpdateTimerData(1);
-			KillTimer(hWnd, 1);
-			SetTimer(hWnd, 1, TIMER_FAST, (TIMERPROC) NULL);
+	case 0: // Ready
+		UpdateTimerData(1);
+		KillTimer(windowData.hWnd, 1);
+		SetTimer(windowData.hWnd, 1, TIMER_FAST, (TIMERPROC)NULL);
 		break;
 
-		case 1: //Running
-			UpdateTimerData(2);
-			KillTimer(hWnd, 1);
-			SetTimer(hWnd, 1, TIMER_DEFAULT, (TIMERPROC) NULL);
+	case 1: //Running
+		UpdateTimerData(2);
+		KillTimer(windowData.hWnd, 1);
+		SetTimer(windowData.hWnd, 1, TIMER_DEFAULT, (TIMERPROC)NULL);
 		break;
 
-		default: //Stopped
-			UpdateTimerData(0);
+	default: //Stopped
+		UpdateTimerData(0);
 		break;
 	}
 }
 
-void ShowHideWindow(HWND hWnd)
+static void WindowShow()
 {
-	if(hidden)
+	KillTimer(windowData.hWnd, 1);
+
+	if (windowData.hidden)
 	{
-		KillTimer(hWnd, 1);
-		ShowWindow(hWnd, SW_HIDE);
+		ShowWindow(windowData.hWnd, SW_HIDE);
 	}
 	else
 	{
-		SetTimer(hWnd, 1, timerData.timerState == 1 ? TIMER_FAST : TIMER_DEFAULT, (TIMERPROC) NULL);
-		ShowWindow(hWnd, SW_SHOWNORMAL);
-		SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-		if(!topmost)
-			SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-		RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+		SetTimer(windowData.hWnd, 1, timerData.timerState == 1 ? TIMER_FAST : TIMER_DEFAULT, (TIMERPROC)NULL);
+		ShowWindow(windowData.hWnd, SW_SHOWNORMAL);
+		SetWindowPos(windowData.hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		if (!windowData.topmost)
+			SetWindowPos(windowData.hWnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		RedrawWindow(windowData.hWnd, NULL, NULL, RDW_INVALIDATE);
 	}
 }
 
-void ShowHelp()
+static int RegisterStartup(HKEY baseKey, wchar_t* name, wchar_t* args)
+{
+	HKEY key;
+	wchar_t* path = (wchar_t*)malloc((MAX_PATH + wcslen(args) + 1) * sizeof(wchar_t));
+
+	if (path == NULL)
+		return 1;
+
+	memset(path, 0, (MAX_PATH + wcslen(args) + 1) * sizeof(wchar_t));
+
+	if (!GetModuleFileName(NULL, path, MAX_PATH))
+	{
+		free(path);
+		return 2;
+	}
+
+	wcsncat_s(path, MAX_PATH + wcslen(args), args, wcslen(args));
+
+	if (RegOpenKeyEx(baseKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ | KEY_WRITE, &key) != ERROR_SUCCESS)
+	{
+		free(path);
+		return 3;
+	}
+
+	if (RegSetValueEx(key, name, 0, REG_SZ, (BYTE*) path, (DWORD) (wcslen(path) + 1) * sizeof(wchar_t)) != ERROR_SUCCESS)
+	{
+		RegCloseKey(key);
+		free(path);
+		return 4;
+	}
+
+	RegCloseKey(key);
+	free(path);
+	return 0;
+}
+
+static int UnregisterStartup(HKEY baseKey, wchar_t* name)
+{
+	HKEY key;
+
+	if (RegOpenKeyEx(baseKey, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ | KEY_WRITE, &key) != ERROR_SUCCESS)
+		return 1;
+
+	if (RegDeleteValue(key, name) != ERROR_SUCCESS)
+	{
+		RegCloseKey(key);
+		return 2;
+	}
+
+	RegCloseKey(key);
+	return 0;
+}
+
+static void ShowHelp()
 {
 	MessageBox(NULL, L"NVD Clock\r\n(C) 2024-2025, Nikolay Dudkin\r\n\r\nControls:\r\nWIN + ESC or control + left doubleclick - close\r\nESC or left doubleclick - hide\r\nF1 - help\r\nF2 or right click - stopwatch\r\nF3 or control + right click - toggle topmost\r\n\r\nCommand line arguments:\r\nautostart=normal - auto start at boot\r\nautostart=hidden - auto start at boot, hidden\r\nautostart=disable - disable auto start at boot\r\nhidden - start hidden", L"NVD Clock", MB_OK | MB_ICONINFORMATION);
 }
@@ -215,25 +221,25 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 
 		case WM_PAINT:
 			hDC = BeginPaint(hWnd, &ps);
-				FillRect(hDC, &ps.rcPaint, hBrush);
+				FillRect(hDC, &ps.rcPaint, windowData.hBrush);
 				SetBkMode(hDC, TRANSPARENT);
 				SetTextColor(hDC, RGB(255, 255, 255));
 				SetTextAlign(hDC, TA_CENTER);
 
 				GetLocalTime(&cTime);
 
-				hOldFont = SelectObject(hDC, hFontBig);
+				hOldFont = SelectObject(hDC, windowData.hFontBig);
 				memset(buf, 0, sizeof(wchar_t) * BUFSIZE);
-				swprintf(buf, BUFSIZE - 1, L"%s%02d:%02d:%02d%s", topmost ? L".": L"", cTime.wHour, cTime.wMinute, cTime.wSecond, topmost ? L".": L"");
-				TextOut(hDC, windowRect.right / 2, 0, buf, (int) wcslen(buf));
+				swprintf(buf, BUFSIZE - 1, L"%s%02d:%02d:%02d%s", windowData.topmost ? L".": L"", cTime.wHour, cTime.wMinute, cTime.wSecond, windowData.topmost ? L".": L"");
+				TextOut(hDC, windowData.windowRect.right / 2, 0, buf, (int) wcslen(buf));
 
 				if(timerData.timerState == 1)
 					UpdateTimerData(1);
 
-				SelectObject(hDC, hFontSmall);
+				SelectObject(hDC, windowData.hFontSmall);
 				memset(buf, 0, sizeof(wchar_t) * BUFSIZE);
 				swprintf(buf, BUFSIZE - 1, L"%s%02d:%02d:%02d.%03d%s", timerData.timerState == 1 ? L".": L"", timerData.passedH, timerData.passedM, timerData.passedS, timerData.passedMS, timerData.timerState == 1 ? L".": L"");
-				TextOut(hDC, windowRect.right / 2, 45, buf, (int) wcslen(buf));
+				TextOut(hDC, windowData.windowRect.right / 2, 45, buf, (int) wcslen(buf));
 
 				SelectObject(hDC, hOldFont);
 			EndPaint(hWnd, &ps);
@@ -247,8 +253,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 						DestroyWindow(hWnd);
 					else
 					{
-						hidden = ~0;
-						ShowHideWindow(hWnd);
+						windowData.hidden = ~0;
+						WindowShow();
 					}
 				break;
 
@@ -257,13 +263,13 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 				break;
 
 				case VK_F2:
-					SwitchTimerState(hWnd);
+					SwitchTimerState();
 					RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
 				break;
 
 				case VK_F3:
-					topmost =~ topmost;
-					ShowHideWindow(hWnd);
+					windowData.topmost = ~windowData.topmost;
+					WindowShow();
 				break;
 
 				default:
@@ -283,8 +289,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 				DestroyWindow(hWnd);
 			else
 			{
-				hidden = ~hidden;
-				ShowHideWindow(hWnd);
+				windowData.hidden = ~windowData.hidden;
+				WindowShow();
 			}
 		break;
 
@@ -293,28 +299,27 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 		case WM_RBUTTONDBLCLK:
 		case WM_NCRBUTTONDBLCLK:
 			if(GetKeyState(VK_CONTROL) & 0x8000)
-				topmost =~ topmost;
+				windowData.topmost = ~windowData.topmost;
 			else
-				SwitchTimerState(hWnd);
-			ShowHideWindow(hWnd);
-			RedrawWindow(hWnd, NULL, NULL, RDW_INVALIDATE);
+				SwitchTimerState();
+			WindowShow();
 		break;
 
-		case WM_USER + 1:
+		case WM_CLOCKNOTIFYICONMESSAGE:
 			switch (lParam)
 			{
 				case WM_LBUTTONDOWN:
-					hidden = ~hidden;
-					ShowHideWindow(hWnd);
+					windowData.hidden = ~windowData.hidden;
+					WindowShow();
 				break;
 
 				case WM_RBUTTONDOWN:
-					hidden = 0;
+					windowData.hidden = 0;
 					if(GetKeyState(VK_CONTROL) & 0x8000)
-						topmost = ~topmost;
+						windowData.topmost = ~windowData.topmost;
 					else
-						SwitchTimerState(hWnd);
-					ShowHideWindow(hWnd);
+						SwitchTimerState();
+					WindowShow();
 					break;
 
 				case WM_LBUTTONDBLCLK:
@@ -334,28 +339,27 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 	return 0;
 }
 
-static int WindowShow(HINSTANCE hInstance)
+static int WindowOpen(HINSTANCE hInstance)
 {
 	wchar_t *windowName = L"NVD clock";
 	wchar_t *className = L"NVD clock class";
 	RECT rect;
 	WNDCLASSEX wcex;
-	HWND hWindow;
 	MSG msg;
 	LOGFONT lf;
 	HICON hMainIcon;
 	NOTIFYICONDATA notifyIconData;
 
 	memset(&rect, 0, sizeof(RECT));
-	memset(&windowRect, 0, sizeof(RECT));
-	windowRect.right = 170;
-	windowRect.bottom = 65;
+	memset(&windowData.windowRect, 0, sizeof(RECT));
+	windowData.windowRect.right = 170;
+	windowData.windowRect.bottom = 65;
 
 	SystemParametersInfo(SPI_GETWORKAREA, 0, &rect, 0);
-	rect.left = rect.right - windowRect.right - 1;
-	rect.top = rect.bottom - windowRect.bottom - 1;
-	rect.right = windowRect.right;
-	rect.bottom = windowRect.bottom;
+	rect.left = rect.right - windowData.windowRect.right - 1;
+	rect.top = rect.bottom - windowData.windowRect.bottom - 1;
+	rect.right = windowData.windowRect.right;
+	rect.bottom = windowData.windowRect.bottom;
 
 	memset(&wcex, 0, sizeof(WNDCLASSEX));
 	wcex.cbSize			= sizeof(WNDCLASSEX);
@@ -380,26 +384,26 @@ static int WindowShow(HINSTANCE hInstance)
 	lf.lfOutPrecision = OUT_TT_PRECIS;
 	lf.lfQuality = ANTIALIASED_QUALITY;
 	wcscpy_s(lf.lfFaceName, LF_FACESIZE - 1, L"Segoe UI Light");
-	hFontBig = CreateFontIndirect(&lf);
-	if(!hFontBig)
+	windowData.hFontBig = CreateFontIndirect(&lf);
+	if(!windowData.hFontBig)
 	{
 		UnregisterClass(className, hInstance);
 		return 1;
 	}
 
 	lf.lfHeight = 18;
-	hFontSmall = CreateFontIndirect(&lf);
-	if(!hFontSmall)
+	windowData.hFontSmall = CreateFontIndirect(&lf);
+	if(!windowData.hFontSmall)
 	{
 		UnregisterClass(className, hInstance);
 		return 1;
 	}
 
-	hBrush = CreateSolidBrush(RGB(38, 37, 36));
-	if(!hBrush)
+	windowData.hBrush = CreateSolidBrush(RGB(38, 37, 36));
+	if(!windowData.hBrush)
 	{
-		DeleteObject(hFontSmall);
-		DeleteObject(hFontBig);
+		DeleteObject(windowData.hFontSmall);
+		DeleteObject(windowData.hFontBig);
 		UnregisterClass(className, hInstance);
 		return 1;
 	}
@@ -407,48 +411,45 @@ static int WindowShow(HINSTANCE hInstance)
 	hMainIcon = LoadIcon(hInstance, MAKEINTRESOURCE(1));
 	if (!hMainIcon)
 	{
-		DeleteObject(hBrush);
-		DeleteObject(hFontSmall);
-		DeleteObject(hFontBig);
+		DeleteObject(windowData.hBrush);
+		DeleteObject(windowData.hFontSmall);
+		DeleteObject(windowData.hFontBig);
 		UnregisterClass(className, hInstance);
 		return 1;
 	}
 
-	hWindow = CreateWindowEx(WS_EX_TOOLWINDOW | WS_EX_LAYERED, className, windowName, WS_VISIBLE | WS_POPUP, rect.left, rect.top, rect.right, rect.bottom, NULL, NULL, hInstance, NULL);
+	windowData.hWnd = CreateWindowEx(WS_EX_TOOLWINDOW | WS_EX_LAYERED, className, windowName, WS_VISIBLE | WS_POPUP, rect.left, rect.top, rect.right, rect.bottom, NULL, NULL, hInstance, NULL);
 
-	if(!hWindow)
+	if(!windowData.hWnd)
 	{
-		DeleteObject(hBrush);
-		DeleteObject(hFontSmall);
-		DeleteObject(hFontBig);
+		DeleteObject(windowData.hBrush);
+		DeleteObject(windowData.hFontSmall);
+		DeleteObject(windowData.hFontBig);
 		UnregisterClass(className, hInstance);
 		return 1;
 	}
 
+	memset(&notifyIconData, 0, sizeof(NOTIFYICONDATA));
 	notifyIconData.cbSize			= sizeof(NOTIFYICONDATA);
-	notifyIconData.hWnd				= hWindow;
+	notifyIconData.hWnd				= windowData.hWnd;
 	notifyIconData.uID				= 1;
 	notifyIconData.uFlags			= NIF_ICON | NIF_MESSAGE | NIF_TIP;
-	notifyIconData.uCallbackMessage	= WM_USER + 1;
+	notifyIconData.uCallbackMessage	= WM_CLOCKNOTIFYICONMESSAGE;
 	notifyIconData.hIcon			= hMainIcon;
 
-	#ifndef __WATCOMC__
 	wcsncpy_s(notifyIconData.szTip, 64, windowName, 64);
-	#else
-	wcsncpy(notifyIconData.szTip, windowName, 64);
-	#endif
 
 	if (!Shell_NotifyIcon(NIM_ADD, &notifyIconData))
 	{
 		DestroyIcon(hMainIcon);
-		DeleteObject(hFontSmall);
-		DeleteObject(hFontBig);
-		DeleteObject(hBrush);
+		DeleteObject(windowData.hFontSmall);
+		DeleteObject(windowData.hFontBig);
+		DeleteObject(windowData.hBrush);
 		UnregisterClass(className, hInstance);
 		return 1;
 	}
 
-	ShowWindow(hWindow, hidden ? SW_HIDE : SW_SHOW);
+	ShowWindow(windowData.hWnd, windowData.hidden ? SW_HIDE : SW_SHOW);
 
 	while(GetMessage(&msg, NULL, 0, 0))
 	{
@@ -459,9 +460,9 @@ static int WindowShow(HINSTANCE hInstance)
 	Shell_NotifyIcon(NIM_DELETE, &notifyIconData);
 
 	DestroyIcon(hMainIcon);
-	DeleteObject(hFontSmall);
-	DeleteObject(hFontBig);
-	DeleteObject(hBrush);
+	DeleteObject(windowData.hFontSmall);
+	DeleteObject(windowData.hFontBig);
+	DeleteObject(windowData.hBrush);
 	UnregisterClass(className, hInstance);
 
 	return 0;
@@ -500,7 +501,10 @@ static int WindowShow(HINSTANCE hInstance)
 		return 0;
 	}
 
+	memset(&windowData, 0, sizeof(windowData));
+
 	if(!wcscmp(lpCmdLine, L"hidden"))
-		hidden = ~0;
-	return WindowShow(hInstance);
+		windowData.hidden = ~0;
+
+	return WindowOpen(hInstance);
 }
